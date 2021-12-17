@@ -309,7 +309,7 @@ Over 90% of reported incidents resulted in the patient receiving treatment and b
 Reported overdoses peak daily in the morning and afternoon, and rise sharply from Thursday to Saturday. For time of year, August saw the highest number of reported overdoses, with the lowest numbers from January to April. Notably, overdoses rise steadily through the fall, and are almost as high in December as at the peak of summer, before dropping sharply in January.  
 
 
-```{r Summary of Overdoses by Patient Demographics, Incident Outcome and Time Reported,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Summary of Overdoses by Patient Demographics, Incident Outcome and Time Reported,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 
 #Age Groups
 overdoses.sf <- overdoses.sf %>%
@@ -467,7 +467,7 @@ Our initial mapping of cases showed an extreme concentration of overdoses in the
 To determine where are the actual hot spots of overdoses, we found the Local Moran's I function to see where the presence of reported overdoses are influenced to a statistically significant degree by the presence of nearby incidents. This test showed that the area of the city in which the prevalence of overdoses was meaningfully clustered, and not distributed randomly, is relatively large and covers a significant portion of the downtown area(figure 2.4). Notably, almost the entire western portion of the city is within 1 mile of an overdose hot spot(figure 2.5).  
 
 
-```{r Spatial Distribution and Overdose Hotspots,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Spatial Distribution and Overdose Hotspots,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 
 ggplot() + 
   geom_sf(data = MesaBound) +
@@ -617,7 +617,7 @@ In addition to mapping these risk factors with the fishnet(figure 3.1), we used 
 ### Risk Factor Spatial Distribution
 
 
-```{r Spatial Distribution of Risk Factors,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Spatial Distribution of Risk Factors,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 
 vars_net_reg.long <- 
   gather(vars_net_reg, Variable, value, -geometry, -uniqueID)
@@ -639,7 +639,7 @@ do.call(grid.arrange,c(mapList, ncol=3, top="Figure 3.1: Risk Factors by Fishnet
 ### Nearest Neighbor Risk Factor Spatial Distribution 
 
 
-```{r Spatial Distribution of Nearest Neighbor Risk Factors,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Spatial Distribution of Nearest Neighbor Risk Factors,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 vars_net.long.nn <- 
   dplyr::select(vars_net, ends_with(".nn")) %>%
     gather(Variable, value, -geometry)
@@ -670,7 +670,7 @@ We ran correlation tests with the independent variables described above, and fou
 A correlation table between variables(figure 4.3) showed high correlations between the various crimes used as risk factors, indicating that including multiple ones would not add to the final model. 
 
 
-```{r Variable Correlation, fig.height=10, fig.width=10,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Variable Correlation, fig.height=10, fig.width=10,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 
 correlation.long <-
   st_drop_geometry(final_net) %>%
@@ -717,7 +717,7 @@ ggcorrplot(
 Finally, to create a predictive model for heroin overdoses, we used a Poisson Regression with both k-fold and LOGO cross-validations. Given the extreme spatial concentration of overdoses observed earlier, the LOGO regressions had significantly higher margins of error than the k-fold regressions. As expected the high concentration of overdoses around the downtown threw off predictions when the area was used as the hold out(Figure 5.1). Adding the spatial variables improved the goodness of fit for both regressions(figure 5.2), confirming observations from the correlation tests in the previous section. Ultimately, we chose the random k-fold cross validation method using spatial variables as the preferred regression for our model, and as the basis for our proposed app to be discussed in the final section.  
 
 
-```{r Regressions and Cross Validation, fig.height=10, fig.width=10,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Regressions and Cross Validation, fig.height=10, fig.width=10,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 reg.vars <- c("Hospitals", "Bus Stops", "Parks", "Homelessness", "Car breakins", "Disorderly Conduct", "Shoplifting",  "Drug Possession", "Possession of Paraphernalia", "Schools Free Lunch")
    
 reg.ss.vars <- c("Bus.Stops.nn","Mesa.Hospitals.nn","Car_Breakins.nn", "Disorderly.Conduct.nn", "Shoplifting.nn", "DrugPossession.nn", "PossessionofPara.nn","Parks.nn", "SchoolsFreeLunch.nn", "DT.Distance", "OD.isSig", "OD.isSig.dist")
@@ -828,7 +828,7 @@ Cor.Table <- st_drop_geometry(error_by_reg_and_fold) %>%
 To check the usefulness of our model, we compared its predictions with ones derived from using a kernel density hot spot map. As mentioned in the first section, 2020 cases were removed from the training set to be used to test the model's accuracy. Because 2021 has not ended, we chose not to use the most recent year as our test set. We then overlaid the 2020 cases onto both a kernel density map and a risk category map based on our model's predictions to assess the quality of its fit(figure 6.1). As the bar graph in figure 6.2 shows, our model out performed the kernel density map in the highest risk category, indicating slightly better predictive capability. 
 
 
-```{r Kernel Density and Risk Prediction,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Kernel Density and Risk Prediction,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 
 OD_ppp <- as.ppp(st_coordinates(overdoses.sf), W = st_bbox(final_net))
 OD_KD.1000 <- spatstat.core::density.ppp(OD_ppp, 1000)
@@ -935,7 +935,7 @@ One limitation of our approach is that it uses the same regression model for sep
 A future step for the development of the app would be the inclusion of harm reduction data into the model, which could be used to generate alternate predictions which factor in the effects of introducing a safe injection site to the area. This would make the model more impactful, not only for understanding the cost of business as usual, but making explicit the benefits for the entire population of non-punitive drug treatment policies.
 
 
-```{r Reported Overdoses by City Council District,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+```{r Reported Overdoses by City Council District,message=FALSE, warning=FALSE, include = FALSE, results="markup"}
 
 DOA_net <- 
   dplyr::select(overdoses.sf) %>% 
