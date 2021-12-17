@@ -1,0 +1,1084 @@
+---
+title: "PPA Final Project"
+author: "Kayla Lumpkin & Sam Hausner-Levine"
+date: "12/15/2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: "hide"
+    code_download: true
+editor_options: 
+chunk_output_type: console
+---
+# Table of Contents
+1. Introduction
+2. Summary of Findings and Case Details
+3. Analysis of Risk Factors
+4. Correlation and Regressions
+5. Applying the model in the local context
+
+```{r Loading Environment, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE)
+
+library(tidyverse)
+library(stringr)
+library(tidytext)
+library(sf)
+library(dygraphs)
+library(hrbrthemes)
+library(xts)
+library(lubridate)
+library(RSocrata)
+library(viridis)
+library(spatstat)
+library(raster)
+library(spdep)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(tidycensus)
+library(rjson)
+library(geojsonR)
+library(stargazer)
+library(readr)
+library(mapview)
+library(caret)
+library(ckanr)
+library(ggcorrplot)
+library(dplyr)
+library(tmap)
+library(jtools)
+library(tmaptools)
+library(jsonlite)
+
+options(scipen=999)
+options(tigris_class = "sf")
+
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 16,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.text.x = element_text(size = 14))
+}
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 16,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+
+#load color palettes
+palette5 <- c("#fef0d9","#fdcc8a","#fc8d59","#e34a33","#b30000")
+paletteMap <- c("#fee5d9","#fcae91","#fb6a4a","#de2d26","#a50f15")
+
+
+root.dir = "https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/DATA/"
+
+source("https://raw.githubusercontent.com/urbanSpatial/Public-Policy-Analytics-Landing/master/functions.r")
+
+overdoses <- read.socrata("https://data.mesaaz.gov/resource/qufy-tzv6.json") %>%
+na.omit()
+
+as_tibble(overdoses)
+
+overdoses.sf <- 
+  overdoses %>% 
+  mutate(X = as.numeric(longitude),Y = as.numeric(latitude)) %>%
+  mutate(Year = as.numeric(year)) %>%
+  mutate(Treatement = treatment_or_medication_given) %>%
+  add_column(Age = NA) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant") %>%
+  st_transform('ESRI:102248') %>% 
+    distinct()
+
+overdoses.sf$ID <- 1:nrow(overdoses.sf)
+
+as.numeric(overdoses.sf$Age)
+
+na.omit(overdoses.sf$patient_age)
+
+overdoses.sf$Age <- gsub('-',":",overdoses.sf$patient_age) 
+
+as.numeric(as.character(overdoses.sf$Age))
+
+
+overdoses.sf$age <- ifelse(overdoses.sf$patient_age == "0-14", 1,
+                         ifelse(overdoses.sf$patient_age == "14-19", 2,
+                                ifelse(overdoses.sf$patient_age == "20-24", 3,
+                                       ifelse(overdoses.sf$patient_age == "25-29", 4,
+                                              ifelse(overdoses.sf$patient_age == "30-34", 5,
+                                                     ifelse(overdoses.sf$patient_age == "35-39", 6,
+                                                            ifelse(overdoses.sf$patient_age == "40-44", 7,
+                                                                   ifelse(overdoses.sf$patient_age == "45-49", 8,
+                                                                          ifelse(overdoses.sf$patient_age == "50-54",9,
+                                                                                 ifelse(overdoses.sf$patient_age == "55-59",10,
+                                                                                        ifelse(overdoses.sf$patient_age == "60-64", 11,
+                                                                                               ifelse(overdoses.sf$patient_age == "65-69", 12,
+                                                                                                      ifelse(overdoses.sf$patient_age == "70-74", 13,
+                                                                                                             ifelse(overdoses.sf$patient_age == "75-79", 14,
+                                                                                                                    ifelse(overdoses.sf$patient_age == "80+", 15, 0)))))))))))))))
+                                                                   
+   
+
+sapply(overdoses.sf, class)
+
+MesaBound <- st_read("https://opendata.arcgis.com/datasets/b56f02cdc87643b593ceebcd28669564_0.geojson") %>%
+  st_transform('ESRI:102248')
+
+Downtown <- st_read("https://opendata.arcgis.com/datasets/b56f02cdc87643b593ceebcd28669564_0.geojson") %>%
+  st_transform('ESRI:102248')
+
+MesaDistricts <- st_read("C:/Users/shaus/Downloads/Council District.geojson") %>%st_transform('ESRI:102248')
+
+overdoses.sf <- st_join(overdoses.sf, MesaBound, join = st_within)
+
+overdoses.sf <- overdoses.sf %>%
+  filter(year != "2020" & year != "2021" ) 
+
+fishnet <- 
+  st_make_grid(MesaBound,
+               cellsize = 500, 
+               square = TRUE) %>%
+  .[MesaBound] %>%            # <- MDH Added
+  st_sf() %>%
+  mutate(uniqueID = rownames(.))
+
+Hospitals <- st_read("C:/Users/shaus/Downloads/Hospitals (1).geojson")%>%
+  st_transform('ESRI:102248')
+
+Mesa.Hospitals <- st_join(Hospitals, MesaBound, join = st_within)%>%
+    dplyr::select(geometry) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet)) %>%
+  mutate(legend = "Hospitals")
+
+Bus.Stops<- st_read("C:/Users/shaus/Downloads/Valley_Metro_Bus_Stops.geojson") %>% st_transform('ESRI:102248')
+  
+Mesa.Bus.Stops <- st_join(Bus.Stops, MesaBound, join = st_within)%>%
+    dplyr::select(geometry) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet)) %>%
+  mutate(legend = "Bus Stops")
+
+
+HomelessCount <- st_read("C:/Users/shaus/Downloads/Unsheltered_Point_in_Time__PIT__Count (1).csv") %>%
+  na.omit
+
+HomelessCount <- HomelessCount %>%
+  filter(HomelessCount$Longitude != "") %>%
+st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326, agr = "constant") %>%
+  st_transform(st_crs(fishnet))%>%
+  mutate(legend = "Homelessness") %>%
+  dplyr:: select(geometry, legend)
+
+SchoolsFreeLunchPct <- 
+  read.socrata("https://data.mesaaz.gov/resource/smdi-gyww.json")%>%
+  filter(percent >= "50") %>%
+    dplyr::select(Y = location.latitude, X = location.longitude) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet))%>%
+  mutate(legend = "Schools Free Lunch")
+  
+Parks<- 
+  read.socrata("https://data.mesaaz.gov/resource/djym-pkpp.json")%>%
+    mutate(Y = latitude, X = longitude) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet))%>%
+  mutate(legend = "Parks")
+
+Mesa.Parks <- 
+  st_join(Parks, MesaBound, join = st_within) %>%
+  dplyr:: select(geometry, legend)%>%
+  na.omit()
+
+crimes <- 
+  read.socrata("https://data.mesaaz.gov/resource/39rt-2rfj.json") 
+
+crimes <- crimes %>% filter(report_year != 2016)
+
+PossessionofPara <- crimes %>%
+  filter(crime_type == "DRUG PARAPHERNALIA-POSSESS-USE")%>%
+    dplyr::select(Y = latitude, X = longitude) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet)) %>%
+  mutate(legend = "Possession of Paraphernalia")
+
+DrugPosession <- 
+  crimes%>%
+  filter(crime_type == "NARCOTIC DRUG-POSSES-US")%>%
+    dplyr::select(Y = latitude, X = longitude) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet))%>%
+  mutate(legend = "Drug Possession")
+
+shoplifting <- 
+  crimes%>%
+  filter(crime_type == "SHOPLIFTING-REMOVAL OF GOODS")%>%
+    dplyr::select(Y = latitude, X = longitude) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet)) %>%
+  mutate(legend = "Shoplifting")
+
+car_breakins<- 
+  crimes %>%
+  filter(crime_type == "BURGLARY, AUTO - 3RD DEGREE")%>%
+    dplyr::select(Y = latitude, X = longitude) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet)) %>%
+  mutate(legend = "Car breakins")
+
+Disorderly.Conduct<- 
+  crimes %>%
+  filter(crime_type == "BURGLARY, AUTO - 3RD DEGREE")%>%
+    dplyr::select(Y = latitude, X = longitude) %>%
+    na.omit() %>%
+    st_as_sf(coords = c("X", "Y"), crs = 4326, agr = "constant") %>%
+    st_transform(st_crs(fishnet)) %>%
+  mutate(legend = "Disorderly Conduct")
+
+
+
+```
+
+
+# Introduction
+
+For this project, we designed an app for a fictional harm reduction advocacy group called Project Dawn, which works to raise awareness about the need for safe injection sites and a non-punitive approach to heroin and opioid treatment. According to the CDC, cost of the opioid epidemic for the United States in 2018 was $1,021 billion, and and over $22 billion for Arizona alone. For an individual case, the cost of opioid use disorder is $221,219 and $11,548,000 for fatal overdoses. This estimate factors in the combined costs of healthcare, substance use treatment, criminal justice and lost productivity. The purpose of the app is to help voters and local lawmakers understand the heroin epidemic by calculating the local projected costs of the epidemic and to recognize that establishing safe injection and treatment sites would have material benefits for their communities. In addition to raising general awareness, our app is intended to be part of a campaign to pass a city ordinance allowing for the creation of neighborhood safe injection and treatment sites. 
+
+The basis of our proposed app is a predictive geospatial risk model using data from Mesa, Arizona on reported heroin overdoses in the city from 2017-2021. In order to test the predictive ability of our model, we filtered the data to include only 2017, 2018, 2019 and left 2020(the last full available year) incidents as our test cases. In the first section of our project, we review the breakdown of heroin overdose case types by patient demographics, location and time. Second, we review selected risk factors and their spatial distribution in relation to reported heroin overdoses. Third, we run a regression and evaluate its accuracy and goodness of fit. Finally, we use the model to create a data map showing the projected impact of heroin overdoses for city council districts in terms of life lost and money spent.  
+
+Our presentation on Project Dawn and the app can be seen here <https://vimeo.com/652671500>
+
+To CDC's report on the economic impacts of the opioid epidemic can be seen here <https://www.cdc.gov/mmwr/volumes/70/wr/pdfs/mm7015a1-H.pdf>
+
+# Summary of Findings and Case Details
+
+
+## Patient Demographics
+
+### Gender
+In all years covered, men made up the majority of overdose patients, with an overall split of 60/40 between men and women from 2017 to 2019(figures 2.1a and 2.1b). 
+
+### Age
+Young adults(20-34) and adults(35-54) were the largest age groups of patients, although the share of youth(0-19) and senior(65-74) patients has grown significantly since 2017.(figures 2.2a and 2.2b)
+
+## Incident Outcomes
+Over 90% of reported incidents resulted in the patient receiving treatment and being transported to a hospital for care. Only 5% of overdoses were declared dead on arrival, although this number has steadily increased since 2017(figures 2.3a and 2.3b).
+
+## Time of Incident
+(Figures 2.4-2.6)
+
+Reported overdoses peak daily in the morning and afternoon, and rise sharply from Thursday to Saturday. For time of year, August saw the highest number of reported overdoses, with the lowest numbers from January to April. Notably, overdoses rise steadily through the fall, and are almost as high in December as at the peak of summer, before dropping sharply in January.  
+
+
+```{r Summary of Overdoses by Patient Demographics, Incident Outcome and Time Reported,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+
+#Age Groups
+overdoses.sf <- overdoses.sf %>%
+  mutate(Age_group = ifelse(patient_age == "0-14"|patient_age == "14-19","Youth(0-19)",
+         ifelse(patient_age == "20-24"|patient_age == "25-29"|patient_age == "30-34", "Young Adult(20-34)",
+         ifelse(patient_age == "35-39"|patient_age == "40-44"|patient_age == "45-49"|patient_age == "50-54", "Adult(35-54)",
+         ifelse(patient_age == "55-59"|patient_age == "60-64", "Advanced Adult(55-64)",
+         ifelse(patient_age == "65-69"|patient_age == "70-74","Senior(65-74)","Advanced Senior(75+)"))))))
+
+#Age as orderderd factors
+overdoses.sf <-  overdoses.sf %>%
+  mutate(patient_age = factor(patient_age, levels = c("0-14","14-19","20-24","25-29","30-34","35-39","40-44","45-49","50-54","55-59","60-64","65-69","70-74","75-79","80+"), ordered = TRUE))%>%
+  mutate(Age_group = factor(Age_group, levels = c("Youth(0-19)","Young Adult(20-34)", "Adult(35-54)", "Advanced Adult(55-64)", "Senior(65-74)", "Advanced Senior(75+)"), ordered = TRUE))
+#25
+
+
+
+overdoses.sf <- overdoses.sf %>%
+  mutate(outcome = ifelse(incident_disposition == "Treated/Transported with Medic Ride-in"|incident_disposition == "Transported by MFMD Rescue with Medic Ride-in"|incident_disposition == "Treated/Transferred Care to Transport Unit"|incident_disposition == "Transported by MFMD Rescue"|incident_disposition == "Treated, Transferred Care to Transport Unit"|incident_disposition == "Treated/Transported by this EMS Unit (Fire Unit)", "Treated/Transported",
+                          ifelse(incident_disposition == "Evaluated/Treated, Refused Transport (Refusal Form)"|incident_disposition == "Evaluated / Treated, Refused  Transport (Refusal Form)", "Treated/Refused Transport",
+                                 ifelse(incident_disposition == "Refused Evaluation/Treatment/Transport (Refusal Form)", "Refused Treatment & Transport",
+                                        ifelse(incident_disposition == "NO PATIENT CONTACT (Staged/Arrived/Inadvertent EMS Activation/False Medical Alarm/Assisted Other Fire Unit)", "No Patient Contact", "DOA")))))
+#pull out how many went to hospital
+
+overdose.count <- 
+  overdoses.sf %>%
+  st_drop_geometry()%>%
+  mutate(count= 1)%>%
+  mutate(overdose = "overdose") %>%
+  summarize(overdose = sum(count))
+
+incident <-
+  overdoses.sf %>%
+    group_by(incident_disposition) %>% 
+    count()
+
+outcomes <-
+  overdoses.sf %>%
+  st_drop_geometry()%>%
+  mutate(count = 1)%>%
+    group_by(outcome) %>%
+  summarise(Percent = (sum(count)/1358)*100)
+outcomes <- outcomes[order(outcomes$Percent, decreasing = TRUE),]
+
+ages <-
+  overdoses.sf %>%
+  st_drop_geometry()%>%
+  mutate(count = 1)%>%
+    group_by(patient_age) %>%
+  summarise(Percent = (sum(count)/1358)*100)
+
+genders <-
+  overdoses.sf %>%
+  st_drop_geometry()%>%
+  mutate(count = 1)%>%
+    group_by(gender) %>%
+  summarise(Percent = (sum(count)/1358)*100)
+
+time.of.day <- 
+  overdoses.sf %>%
+  st_drop_geometry()%>% 
+  mutate(time_of_day = factor(time_of_day, levels = c("Morning", "Afternoon", "Evening", "Overnight"), ordered = TRUE)) %>%
+  mutate(count = 1)%>%
+    group_by(time_of_day) %>%
+  summarise( Count = sum(count),Percent = (sum(count)/1358)*100) 
+
+day.of.week <- 
+  overdoses.sf %>%
+  st_drop_geometry()%>%
+  mutate(day_of_week = factor(day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"), ordered = TRUE)) %>%
+  mutate(count = 1)%>%
+    group_by(day_of_week) %>%
+  summarise( Count = sum(count),Percent = (sum(count)/1358)*100) 
+
+month <- 
+  overdoses.sf %>%
+  st_drop_geometry()%>% 
+  mutate(month = factor(month, levels = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"), ordered = TRUE)) %>%
+  mutate(count = 1)%>%
+    group_by(month) %>%
+  summarise( Count = sum(count),Percent = (sum(count)/1358)*100) 
+
+
+
+
+
+
+
+
+
+
+ggplot(data = overdoses.sf[is.na(overdoses.sf$gender)== FALSE,], mapping = aes(x = year, fill = gender)) + 
+  geom_bar() +
+  labs(title = "Figure 1.1a: Reported Heroin Overdoses by Patient Gender in Mesa, AZ(2017-2019)")
+
+kable(genders) %>%
+ kable_styling() %>%
+ footnote(general_title = "\n",
+       general = "Figure 1.1b: Share of Reported Heroin Overdoses by Patient Gender in Mesa, AZ(2017-2019)")
+
+ggplot(data = overdoses.sf[is.na(overdoses.sf$Age_group)== FALSE,], mapping = aes(x = year, fill = Age_group)) + 
+  geom_bar() +
+  labs(title = "Figure 1.2a: Reported Heroin Overdoses by Age in Mesa, AZ(2017-2019)")
+
+kable(ages) %>%
+ kable_styling() %>%
+ footnote(general_title = "\n",
+       general = "Figure 1.2b: Share of Reported Heroin Overdoses by Age in Mesa, AZ(2017-2019)")
+
+ggplot(data = overdoses.sf[is.na(overdoses.sf$outcome)== FALSE,], mapping = aes(x = year, fill = outcome)) + 
+  geom_bar() +
+  labs(title = "Figure 1.3a: Reported Heroin Overdoses by Incident Outcome in Mesa, AZ(2017-2019)")
+
+kable(outcomes) %>%
+ kable_styling() %>%
+ footnote(general_title = "\n",
+       general = "Figure 1.3b: Share of Reported Heroin Overdoses by Incident Outcome in Mesa, AZ(2017-2021")
+
+ggplot(data = time.of.day, mapping = aes(x = time_of_day, y = Count, group = 1)) + 
+  geom_point()+
+  geom_line(color = "black") +
+  labs(title = "Figure 1.4a: Reported Heroin Overdoses by Time of Day in Mesa, AZ(2017-2019)")
+
+kable(time.of.day) %>%
+ kable_styling() %>%
+ footnote(general_title = "\n",
+       general = "Figure 1.4b: Share of Reported Heroin Overdoses by Time of Day in Mesa, AZ(2017-2021")
+
+
+ggplot(data = day.of.week, mapping = aes(x = day_of_week, y = Count, group = 1)) + 
+  geom_point()+
+  geom_line(color = "black") +
+  labs(title = "Figure 1.5a: Reported Heroin Overdoses by Day of the Week in Mesa, AZ(2017-2019)")
+
+kable(day.of.week) %>%
+ kable_styling() %>%
+ footnote(general_title = "\n",
+       general = "Figure 1.5b: Share of Reported Heroin Overdoses by Day the Week in Mesa, AZ(2017-2021")
+
+ggplot(data = month, mapping = aes(x = month, y = Count, group = 1)) + 
+  geom_point()+
+  geom_line(color = "black") +
+  labs(title = "Figure 1.6a: Reported Heroin Overdoses by Month in Mesa, AZ(2017-2019)")
+
+kable(month) %>%
+ kable_styling() %>%
+ footnote(general_title = "\n",
+       general = "Figure 1.6b: Share of Reported Heroin Overdoses by Month in Mesa, AZ(2017-2021")
+```
+
+## Spatial Distribution and Overdose Hotspots
+
+Our initial mapping of cases showed an extreme concentration of overdoses in the western section of the city near the downtown area and significantly lower numbers in the eastern and southern fringes of the city(figure 2.1). As the fishnet map of overdoses(figure 2.3), the vast majority of the city had very few or no reported cases, which we noted in considering the accuracy of our model later on.  
+
+To determine where are the actual hot spots of overdoses, we found the Local Moran's I function to see where the presence of reported overdoses are influenced to a statistically significant degree by the presence of nearby incidents. This test showed that the area of the city in which the prevalence of overdoses was meaningfully clustered, and not distributed randomly, is relatively large and covers a significant portion of the downtown area(figure 2.4). Notably, almost the entire western portion of the city is within 1 mile of an overdose hot spot(figure 2.5).  
+
+
+```{r Spatial Distribution and Overdose Hotspots,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+
+ggplot() + 
+  geom_sf(data = MesaBound) +
+  geom_sf(data = overdoses.sf, colour="red", size=0.1, show.legend = "point")+
+  labs(title= "Reported Heroin Overdoses in Mesa, AZ(2017-2019)", caption= "Figure 2.1: Incident Locations") +
+  mapTheme(title_size = 12)
+
+ggplot() + 
+  geom_sf(data = MesaBound, fill = "grey40") +
+  stat_density2d(data = data.frame(st_coordinates(overdoses.sf)), 
+                 aes(X, Y, fill = ..level.., alpha = ..level..),
+                 size = 0.01, bins = 40, geom = 'polygon') +
+  scale_fill_viridis() +
+  scale_alpha(range = c(0.00, 0.35), guide = FALSE) +
+  labs(title = "Reported Heroin Overdoses in Mesa, AZ(2017-2019)", caption= "Figure 2.2: Incident Density") +
+  mapTheme(title_size = 12) + theme(legend.position = "none")
+
+HO_net <- 
+  dplyr::select(overdoses.sf) %>% 
+  mutate(countOverdose = 1) %>% 
+  aggregate(., fishnet, sum) %>%
+  mutate(countOverdose = replace_na(countOverdose, 0),
+         uniqueID = rownames(.),
+         cvID = sample(round(nrow(fishnet) / 24), size=nrow(fishnet), replace = TRUE))
+
+ggplot() +
+  geom_sf(data = HO_net, aes(fill = countOverdose)) +
+  scale_fill_viridis() +
+  labs(title = "Reported Heroin Overdoses in Mesa, AZ(2017-2019)", caption = "Figure 2.3: Incident Count by Fishnet Cell(500 ft") +
+  mapTheme()
+
+st_c <- st_coordinates
+st_centroid <- st_centroid
+
+vars_net <- rbind(Mesa.Hospitals, Mesa.Bus.Stops, Mesa.Parks, HomelessCount, car_breakins, Disorderly.Conduct, shoplifting,  DrugPosession, PossessionofPara, SchoolsFreeLunchPct) %>%
+  st_join(., fishnet, join=st_within) %>%
+  st_drop_geometry() %>%
+  group_by(uniqueID, legend) %>%
+  summarize(count = n()) %>%
+  full_join(fishnet, by = "uniqueID") %>%
+  spread(legend, count, fill=0) %>%
+  st_sf() %>%
+  dplyr::select(-`<NA>`) %>%
+  na.omit() %>%
+  ungroup()
+
+Downtown.Mesa.Point <- st_read("C:/Users/shaus/Downloads/DowntownMesa.geojson") %>% st_transform('ESRI:102248') %>% st_centroid
+
+vars_net_reg <- vars_net
+
+vars_net$DT.Distance =
+  st_distance(st_centroid(vars_net),Downtown.Mesa.Point) %>%
+  as.numeric()
+
+
+vars_net <-
+  vars_net %>%
+    mutate(
+      Bus.Stops.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(Mesa.Bus.Stops),3),
+      Mesa.Hospitals.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(Mesa.Hospitals),1),
+      Car_Breakins.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(car_breakins),3),
+      Disorderly.Conduct.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(Disorderly.Conduct),3),
+      Shoplifting.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(shoplifting),3),
+      DrugPossession.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(DrugPosession),3),
+      PossessionofPara.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(PossessionofPara),3),
+      Parks.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(Mesa.Parks),1),
+      SchoolsFreeLunch.nn =
+        nn_function(st_c(st_centroid(vars_net)), st_c(SchoolsFreeLunchPct),1))
+
+final_net <-
+  left_join(HO_net, st_drop_geometry(vars_net), by="uniqueID") 
+
+
+ 
+final_net.nb <- poly2nb(as_Spatial(final_net), queen=TRUE)
+
+final_net.weights <- nb2listw(final_net.nb, style="W", zero.policy=TRUE)
+
+local_morans <- localmoran(final_net$countOverdose, final_net.weights, zero.policy=TRUE) %>% 
+  as.data.frame()
+
+final_net.localMorans <- 
+  cbind(local_morans, as.data.frame(final_net)) %>% 
+  st_sf() %>%
+  dplyr::select(OD_Count = countOverdose, 
+                Local_Morans_I = Ii, 
+                P_Value = `Pr(z != E(Ii))`) %>%
+  mutate(Significant_Hotspots = ifelse(P_Value <= 0.001, 1, 0)) %>%
+  gather(Variable, Value, -geometry)
+
+##plotting
+vars <- unique(final_net.localMorans$Variable)
+varList <- list()
+
+for(i in vars){
+  varList[[i]] <- 
+    ggplot() +
+      geom_sf(data = filter(final_net.localMorans, Variable == i), 
+              aes(fill = Value), colour=NA) +
+      scale_fill_viridis(name="") +
+      labs(title=i) +
+      mapTheme(title_size = 14) + theme(legend.position="bottom")}
+
+do.call(grid.arrange,c(varList, ncol = 4, top = "Figure 2.4: Local Morans I statistics, Heroin Overdoses"))
+
+# generates warning from NN
+final_net <- final_net %>% 
+  mutate(OD.isSig = 
+           ifelse(local_morans[,5] <= 0.001, 1, 0)) %>%
+  mutate(OD.isSig.dist = 
+           nn_function(st_c(st_centroid(final_net)),
+                       st_c(st_centroid(filter(final_net, 
+                                           OD.isSig == 1))), 
+                       k = 1))
+ggplot() +
+      geom_sf(data = final_net, aes(fill=OD.isSig.dist), colour=NA) +
+      scale_fill_viridis(name="Distance") +
+      labs(title="Figure 2.5: Distance to significant overdose hotspots") +
+      mapTheme()
+```
+# Analysis of Risk Factors
+## Spatial Distribution of Risk Factors
+
+To start creating a risk prediction model for overdoses, we collected several open data sets from the city of Mesa. Our process was guided by expectations about activities that might correlate with drug use, such as petty crime, socio-economic conditions, such as homelessness, and public spaces and facilities that could serve as gathering points. Below are the list of geographic risk factors we selected:
+
+-Hospitals
+-Bus Stops
+-City Parks
+-Point in Time Homeless Count
+-Car Breakins
+-Disorderly Conduct
+-Shopflifting
+-Drug Possession
+-Possession of Paraphernalia
+-Schools with 50% or more students receiving free lunch
+
+In addition to mapping these risk factors with the fishnet(figure 3.1), we used the nearest neighbor function to capture the spatial relations between overdoses and the selected risk factors(figure 3.2). Not surprisingly, reports of petty crime overlapped significantly with high density areas for overdoses in the general area of Downtown Mesa. Mapping of bus stops showed an overlap with overdose risk areas, although it also suggests that the concentration of overdoses in the area may be a product of urban density itself. Parks and hospitals appeared to have greater concentrations outside of high risk overdose areas. 
+
+### Risk Factor Spatial Distribution
+
+
+```{r Spatial Distribution of Risk Factors,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+
+vars_net_reg.long <- 
+  gather(vars_net_reg, Variable, value, -geometry, -uniqueID)
+
+vars <- unique(vars_net_reg.long$Variable)
+mapList <- list()
+
+for(i in vars){
+  mapList[[i]] <- 
+    ggplot() +
+      geom_sf(data = filter(vars_net_reg.long, Variable == i), aes(fill=value), colour=NA) +
+      scale_fill_viridis(name="") +
+      labs(title=i) +
+      mapTheme()}
+
+do.call(grid.arrange,c(mapList, ncol=3, top="Figure 3.1: Risk Factors by Fishnet"))
+```
+
+### Nearest Neighbor Risk Factor Spatial Distribution 
+
+
+```{r Spatial Distribution of Nearest Neighbor Risk Factors,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+vars_net.long.nn <- 
+  dplyr::select(vars_net, ends_with(".nn")) %>%
+    gather(Variable, value, -geometry)
+
+vars <- unique(vars_net.long.nn$Variable)
+mapList <- list()
+
+for(i in vars){
+  mapList[[i]] <- 
+    ggplot() +
+      geom_sf(data = filter(vars_net.long.nn, Variable == i), aes(fill=value), colour=NA) +
+      scale_fill_viridis(name="") +
+      labs(title=i) +
+      mapTheme()}
+
+do.call(grid.arrange,c(mapList, ncol = 3, top = "Figure 3.2: Nearest Neighbor risk Factors by Fishnet"))
+
+```
+
+
+# Correlation and Regression
+
+
+## Correlation 
+
+We ran correlation tests with the independent variables described above, and found that several had meaningful correlations with overdose incidence, both positive and negative. Figure 4.2 lists the correlation coefficient of all independent variables with heroin overdoses. Drug possession, possession of paraphernalia, car break-ins and disorderly conduct all had coefficients of over 0.4, showing a high correlation between the incidence of various crimes and overdoses. Shoplifting, surprisingly, did not significantly correlate. For most risk factors, the correlation for spatial variables had an inverse relationship with the correlation with their non-spatial version, with negative coefficients of similar magnitude. Notable exceptions to this pattern were hospitals and parks. The presence of a park or hospital had very low correlation with overdoses, roughly 0.06 and 0.07 respectively. However, the distance to the nearest neighbor for both had moderate negative correlations of roughly -0.22. This indicated that adding a spatial component would lead to a more robust model later on. 
+
+A correlation table between variables(figure 4.3) showed high correlations between the various crimes used as risk factors, indicating that including multiple ones would not add to the final model. 
+
+
+```{r Variable Correlation, fig.height=10, fig.width=10,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+
+correlation.long <-
+  st_drop_geometry(final_net) %>%
+    dplyr::select(-uniqueID, -cvID, -DT.Distance) %>%
+    gather(Variable, Value, -countOverdose)
+
+correlation.cor <-
+  correlation.long %>%
+    group_by(Variable) %>%
+    summarize(correlation = cor(Value, countOverdose, use = "complete.obs"))
+    
+ggplot(correlation.long, aes(Value, countOverdose)) +
+  geom_point(size = 0.1) +
+  geom_text(data = correlation.cor, aes(label = paste("r =", round(correlation, 2))),
+            x=-Inf, y=Inf) +
+  geom_smooth(method = "lm", se = FALSE, colour = "black") +
+  facet_wrap(~Variable, ncol = 5, scales = "free") +
+  labs(title = "Figure 4.1: Overdoses count as a function of risk factors") +
+  plotTheme()
+
+correlation.cor <- correlation.cor[order(correlation.cor$correlation, decreasing = TRUE),]
+
+kable(correlation.cor) %>%
+ kable_styling() %>%
+ footnote(general_title = "\n",
+       general = "Figure 4.2: Independent Variables by Correlation")
+
+numericVars <- select_if(st_drop_geometry(final_net), is.numeric)
+numericVars[is.na(numericVars)] <- 0
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#25CB10", "white", "#FA7800"),
+  type="lower",
+  insig = "blank") +  
+  labs(title = "Figure 4.3: Correlation across numeric variables") 
+
+
+```
+
+## Regression and Cross Validation
+
+Finally, to create a predictive model for heroin overdoses, we used a Poisson Regression with both k-fold and LOGO cross-validations. Given the extreme spatial concentration of overdoses observed earlier, the LOGO regressions had significantly higher margins of error than the k-fold regressions. As expected the high concentration of overdoses around the downtown threw off predictions when the area was used as the hold out(Figure 5.1). Adding the spatial variables improved the goodness of fit for both regressions(figure 5.2), confirming observations from the correlation tests in the previous section. Ultimately, we chose the random k-fold cross validation method using spatial variables as the preferred regression for our model, and as the basis for our proposed app to be discussed in the final section.  
+
+
+```{r Regressions and Cross Validation, fig.height=10, fig.width=10,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+reg.vars <- c("Hospitals", "Bus Stops", "Parks", "Homelessness", "Car breakins", "Disorderly Conduct", "Shoplifting",  "Drug Possession", "Possession of Paraphernalia", "Schools Free Lunch")
+   
+reg.ss.vars <- c("Bus.Stops.nn","Mesa.Hospitals.nn","Car_Breakins.nn", "Disorderly.Conduct.nn", "Shoplifting.nn", "DrugPossession.nn", "PossessionofPara.nn","Parks.nn", "SchoolsFreeLunch.nn", "DT.Distance", "OD.isSig", "OD.isSig.dist")
+
+
+# CV function
+crossValidate <- function(dataset, id, dependentVariable, indVariables) {
+  
+  allPredictions <- data.frame()
+  cvID_list <- unique(dataset[[id]])
+  
+  for (i in cvID_list) {
+    
+    thisFold <- i
+    cat("This hold out fold is", thisFold, "\n")
+    
+    fold.train <- filter(dataset, dataset[[id]] != thisFold) %>% as.data.frame() %>% 
+      dplyr::select(id, geometry, indVariables, dependentVariable)
+    fold.test  <- filter(dataset, dataset[[id]] == thisFold) %>% as.data.frame() %>% 
+      dplyr::select(id, geometry, indVariables, dependentVariable)
+    
+    regression <- glm(paste0(dependentVariable,"~."), family = "poisson", 
+    data = fold.train %>% dplyr::select(-geometry, -id))
+    
+    thisPrediction <- 
+      mutate(fold.test, Prediction = predict(regression, fold.test, type = "response"))
+    
+    allPredictions <-
+      rbind(allPredictions, thisPrediction)
+    
+  }
+  return(st_sf(allPredictions))
+}
+
+reg.cv <- crossValidate(
+  dataset = final_net,
+  id = "cvID",
+  dependentVariable = "countOverdose",
+  indVariables = reg.vars) %>%
+    dplyr::select(cvID = cvID, countOverdose, Prediction, geometry)
+
+reg.ss.cv <- crossValidate(
+  dataset = final_net,
+  id = "cvID",
+  dependentVariable = "countOverdose",
+  indVariables = reg.ss.vars) %>%
+    dplyr::select(cvID = cvID, countOverdose, Prediction, geometry)
+  
+reg.spatialCV <- crossValidate(
+  dataset = final_net,
+  id = "uniqueID",
+  dependentVariable = "countOverdose",
+  indVariables = reg.vars) %>%
+    dplyr::select(cvID = uniqueID, countOverdose, Prediction, geometry)
+
+reg.ss.spatialCV <- crossValidate(
+  dataset = final_net,
+  id = "uniqueID",
+  dependentVariable = "countOverdose",
+  indVariables = reg.ss.vars) %>%
+    dplyr::select(cvID = uniqueID, countOverdose, Prediction, geometry)
+
+reg.summary <- 
+  rbind(
+    mutate(reg.cv,           Error = Prediction - countOverdose,
+                             Regression = "Random k-fold CV: Just Risk Factors"),
+                             
+    mutate(reg.ss.cv,        Error = Prediction - countOverdose,
+                             Regression = "Random k-fold CV: Spatial Process"),
+    
+    mutate(reg.spatialCV,    Error = Prediction - countOverdose,
+                             Regression = "Spatial LOGO-CV: Just Risk Factors"),
+                             
+    mutate(reg.ss.spatialCV, Error = Prediction - countOverdose,
+                             Regression = "Spatial LOGO-CV: Spatial Process")) %>%
+    st_sf() 
+
+error_by_reg_and_fold <- 
+  reg.summary %>%
+    group_by(Regression, cvID) %>% 
+    summarize(Mean_Error = mean(Prediction - countOverdose, na.rm = T),
+              MAE = mean(abs(Mean_Error), na.rm = T),
+              SD_MAE = mean(abs(Mean_Error), na.rm = T)) %>%
+  ungroup()
+
+error_by_reg_and_fold %>%
+  ggplot(aes(MAE)) + 
+    geom_histogram(bins = 30, colour="black", fill = "#FDE725FF") +
+    facet_wrap(~Regression) +  
+    geom_vline(xintercept = 0) + scale_x_continuous(breaks = seq(0, 8, by = 1)) + 
+    labs(title="Figure 5.1: Distribution of MAE", subtitle = "k-fold cross validation vs. LOGO-CV",
+         x="Mean Absolute Error", y="Count") +
+    plotTheme()
+
+Cor.Table <- st_drop_geometry(error_by_reg_and_fold) %>%
+  group_by(Regression) %>% 
+    summarize(Mean_MAE = round(mean(MAE), 2),
+              SD_MAE = round(sd(MAE), 2)) %>%
+  kable(caption = "Figure 5.2: MAE by Regression") %>%
+    kable_styling("striped", full_width = F) %>%
+    row_spec(2, color = "black", background = "#FDE725FF") %>%
+    row_spec(4, color = "black", background = "#FDE725FF") 
+
+
+```
+## Kernel Density and Risk Prediction
+
+To check the usefulness of our model, we compared its predictions with ones derived from using a kernel density hot spot map. As mentioned in the first section, 2020 cases were removed from the training set to be used to test the model's accuracy. Because 2021 has not ended, we chose not to use the most recent year as our test set. We then overlaid the 2020 cases onto both a kernel density map and a risk category map based on our model's predictions to assess the quality of its fit(figure 6.1). As the bar graph in figure 6.2 shows, our model out performed the kernel density map in the highest risk category, indicating slightly better predictive capability. 
+
+
+```{r Kernel Density and Risk Prediction,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+
+OD_ppp <- as.ppp(st_coordinates(overdoses.sf), W = st_bbox(final_net))
+OD_KD.1000 <- spatstat.core::density.ppp(OD_ppp, 1000)
+OD_KD.1500 <- spatstat.core::density.ppp(OD_ppp, 1500)
+OD_KD.2000 <- spatstat.core::density.ppp(OD_ppp, 2000)
+
+
+as.data.frame(OD_KD.1000) %>%
+  st_as_sf(coords = c("x", "y"), crs = st_crs(final_net)) %>%
+  aggregate(., final_net, mean) %>%
+   ggplot() +
+     geom_sf(aes(fill=value)) +
+     scale_fill_viridis(name = "Density") +
+     labs(title = "Kernel density of 2019 Overdoses") +
+     mapTheme(title_size = 14)
+
+Overdoses.2020 <- 
+  overdoses %>% 
+  mutate(X = as.numeric(longitude),Y = as.numeric(latitude)) %>%
+  mutate(Year = as.numeric(year)) %>%
+  mutate(Treatement = treatment_or_medication_given) %>%
+  add_column(Age = NA) %>%
+  filter(year == 2020) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant") %>%
+  st_transform('ESRI:102248') %>% 
+    distinct()
+
+
+OD_KDE_sf <- as.data.frame(OD_KD.1000) %>%
+  st_as_sf(coords = c("x", "y"), crs = st_crs(final_net)) %>%
+  aggregate(., final_net, mean) %>%
+  mutate(label = "Kernel Density",
+         Risk_Category = ntile(value, 100),
+         Risk_Category = case_when(
+           Risk_Category >= 90 ~ "90% to 100%",
+           Risk_Category >= 70 & Risk_Category <= 89 ~ "70% to 89%",
+           Risk_Category >= 50 & Risk_Category <= 69 ~ "50% to 69%",
+           Risk_Category >= 30 & Risk_Category <= 49 ~ "30% to 49%",
+           Risk_Category >= 1 & Risk_Category  <= 29 ~ "1% to 29%")) %>%
+  cbind(
+    aggregate(
+      dplyr::select(Overdoses.2020) %>% mutate(ODCount = 1), ., sum) %>%
+    mutate(ODCount = replace_na(ODCount, 0))) %>%
+  dplyr::select(label, Risk_Category, ODCount)
+
+OD_risk_sf <-
+  filter(reg.summary, Regression == "Random k-fold CV: Spatial Process") %>%
+  mutate(label = "Risk Predictions",
+         Risk_Category = ntile(Prediction, 100),
+         Risk_Category = case_when(
+           Risk_Category >= 90 ~ "90% to 100%",
+           Risk_Category >= 70 & Risk_Category <= 89 ~ "70% to 89%",
+           Risk_Category >= 50 & Risk_Category <= 69 ~ "50% to 69%",
+           Risk_Category >= 30 & Risk_Category <= 49 ~ "30% to 49%",
+           Risk_Category >= 1 & Risk_Category <= 29 ~ "1% to 29%")) %>%
+  cbind(
+    aggregate(
+      dplyr::select(Overdoses.2020) %>% mutate(ODCount = 1), ., sum) %>%
+      mutate(ODCount = replace_na(ODCount, 0))) %>%
+  dplyr::select(label,Risk_Category, ODCount)
+
+#Making comparisons for 2017 vs 2018
+
+rbind(OD_KDE_sf, OD_risk_sf) %>%
+  na.omit() %>%
+  gather(Variable, Value, -label, -Risk_Category, -geometry) %>%
+  ggplot() +
+    geom_sf(aes(fill = Risk_Category), colour = NA) +
+    geom_sf(data = sample_n(Overdoses.2020, 3000,replace = TRUE), size = .5, colour = "black") +
+    facet_wrap(~label, ) +
+    scale_fill_viridis(discrete = TRUE) +
+    labs(title="Figure 6.1: Comparison of Kernel Density and Risk Predictions",
+         subtitle="2017-2019 heroin overdose risk predictions; 2020 heroin overdoses") +
+    mapTheme()
+
+##The bar plot making this comparison
+
+rbind(OD_KDE_sf, OD_risk_sf) %>%
+  st_set_geometry(NULL) %>% na.omit() %>%
+  gather(Variable, Value, -label, -Risk_Category) %>%
+  group_by(label, Risk_Category) %>%
+  summarize(countODs = sum(Value)) %>%
+  ungroup() %>%
+  group_by(label) %>%
+  mutate(Rate_of_test_set_crimes = countODs / sum(countODs)) %>%
+    ggplot(aes(Risk_Category,Rate_of_test_set_crimes)) +
+      geom_bar(aes(fill=label), position="dodge", stat="identity") +
+      scale_fill_viridis(discrete = TRUE) +
+      labs(title = "Figure 6.2: Risk prediction vs. Kernel density, 2020 Overdoses") +
+      plotTheme() + theme(axis.text.x = element_text(angle = 45, vjust = 0.5))
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# Applying the model in the local context
+
+
+The final product of the risk model is a map dashboard showing predicted overdoses broken down by outcome(received treatment vs. declared dead on arrival)and economic cost summarized by city council district.This was achieved by running the K-fold regression two additional times - once for fatalities and once for patients receiving treatment. We chose this regression because it yielded the smallest margins of error in our main model(detailed above). We then joined the fishnet regression summaries to city council district features, a We used this joined regression to calculate the economic impact by district as well, multiplying the count for each outcome by the cost listed by the CDC(https://www.cdc.gov/mmwr/volumes/70/wr/mm7015a1.htm) for opioid use disorder and fatal overdoses. 
+
+Our reasoning for presenting our findings this way was to contextualize our findings on a geographic scale that correlates with policy decisions. Presenting the fishnet predictions on this level allow lawmakers and voters to understand the concrete impact of the opioid epidemic in their communities, although it limits the user's understanding of the spatial distribution of overdoses. Because the app is intended to be used for public awareness and political mobilization, and not direct treatment or intervention, we decided this was an acceptable trade off.  
+
+One limitation of our approach is that it uses the same regression model for separate outcomes, which assumes constant effects from risk factors and weakens its reliability. A more detailed analysis would create separate models for fatal and non-fatal overdoses and identify the variables that increase the likelihood of one outcome over another. 
+
+A future step for the development of the app would be the inclusion of harm reduction data into the model, which could be used to generate alternate predictions which factor in the effects of introducing a safe injection site to the area. This would make the model more impactful, not only for understanding the cost of business as usual, but making explicit the benefits for the entire population of non-punitive drug treatment policies.
+
+
+```{r Reported Overdoses by City Council District,message=FALSE, warning=FALSE, include = FALSE, results='markdown'}
+
+DOA_net <- 
+  dplyr::select(overdoses.sf) %>% 
+  filter(overdoses.sf$outcome == "DOA")%>%
+  mutate(countDOA = 1) %>% 
+  aggregate(., fishnet, sum) %>%
+  mutate(countDOA = replace_na(countDOA, 0),
+         uniqueID = rownames(.),
+         cvID = sample(round(nrow(fishnet) / 24), size=nrow(fishnet), replace = TRUE))
+
+final_DOA_net <-
+  left_join(DOA_net, st_drop_geometry(vars_net), by="uniqueID") 
+
+final_DOA_net.nb <- poly2nb(as_Spatial(final_DOA_net), queen=TRUE)
+
+final_DOA_net.weights <- nb2listw(final_DOA_net.nb, style="W", zero.policy=TRUE)
+
+local_morans_DOA <- localmoran(final_DOA_net$countDOA, final_DOA_net.weights, zero.policy=TRUE) %>% 
+  as.data.frame()
+
+final_DOA_net.localMorans <- 
+  cbind(local_morans, as.data.frame(final_DOA_net)) %>% 
+  st_sf() %>%
+  dplyr::select(DOA_Count = countDOA, 
+                Local_Morans_I = Ii, 
+                P_Value = `Pr(z != E(Ii))`) %>%
+  mutate(Significant_Hotspots = ifelse(P_Value <= 0.001, 1, 0)) %>%
+  gather(Variable, Value, -geometry)
+
+final_DOA_net <- final_DOA_net %>% 
+  mutate(DOA.isSig = 
+           ifelse(local_morans[,5] <= 0.001, 1, 0)) %>%
+  mutate(DOA.isSig.dist = 
+           nn_function(st_c(st_centroid(final_DOA_net)),
+                       st_c(st_centroid(filter(final_DOA_net, 
+                                           DOA.isSig == 1))), 
+                       k = 1))
+
+DOA.reg.ss.vars <- c("Bus.Stops.nn","Mesa.Hospitals.nn","Car_Breakins.nn", "Disorderly.Conduct.nn", "Shoplifting.nn", "DrugPossession.nn", "PossessionofPara.nn","Parks.nn", "SchoolsFreeLunch.nn", "DT.Distance", "DOA.isSig", "DOA.isSig.dist")
+
+DOA.reg.ss.cv <- crossValidate(
+  dataset = final_DOA_net,
+  id = "cvID",
+  dependentVariable = "countDOA",
+  indVariables = DOA.reg.ss.vars) %>%
+    dplyr::select(cvID = cvID, countDOA, Prediction, geometry) %>%
+  mutate(Deaths = Prediction)
+
+Treated_net <- 
+  dplyr::select(overdoses.sf) %>% 
+  filter(overdoses.sf$outcome == "Treated/Transported")%>%
+  mutate(countTreated = 1) %>% 
+  aggregate(., fishnet, sum) %>%
+  mutate(countTreated = replace_na(countTreated, 0),
+         uniqueID = rownames(.),
+         cvID = sample(round(nrow(fishnet) / 24), size=nrow(fishnet), replace = TRUE))
+
+final_Treated_net <-
+  left_join(Treated_net, st_drop_geometry(vars_net), by="uniqueID") 
+
+final_Treated_net.nb <- poly2nb(as_Spatial(final_Treated_net), queen=TRUE)
+
+final_Treated_net.weights <- nb2listw(final_Treated_net.nb, style="W", zero.policy=TRUE)
+
+local_morans_Treated <- localmoran(final_Treated_net$countTreated, final_Treated_net.weights, zero.policy=TRUE) %>% 
+  as.data.frame()
+
+final_Treated_net.localMorans <- 
+  cbind(local_morans, as.data.frame(final_Treated_net)) %>% 
+  st_sf() %>%
+  dplyr::select(Treated_Count = countTreated, 
+                Local_Morans_I = Ii, 
+                P_Value = `Pr(z != E(Ii))`) %>%
+  mutate(Significant_Hotspots = ifelse(P_Value <= 0.001, 1, 0)) %>%
+  gather(Variable, Value, -geometry)
+
+final_Treated_net <- final_Treated_net %>% 
+  mutate(Treated.isSig = 
+           ifelse(local_morans[,5] <= 0.001, 1, 0)) %>%
+  mutate(Treated.isSig.dist = 
+           nn_function(st_c(st_centroid(final_Treated_net)),
+                       st_c(st_centroid(filter(final_Treated_net, 
+                                           Treated.isSig == 1))), 
+                       k = 1))
+
+Treated.reg.ss.vars <- c("Bus.Stops.nn","Mesa.Hospitals.nn","Car_Breakins.nn", "Disorderly.Conduct.nn", "Shoplifting.nn", "DrugPossession.nn", "PossessionofPara.nn","Parks.nn", "SchoolsFreeLunch.nn", "DT.Distance", "Treated.isSig", "Treated.isSig.dist")
+
+Treated.reg.ss.cv <- crossValidate(
+  dataset = final_Treated_net,
+  id = "cvID",
+  dependentVariable = "countTreated",
+  indVariables = Treated.reg.ss.vars) %>%
+    dplyr::select(cvID = cvID, countTreated, Prediction, geometry)%>%
+  mutate(Predicted.Treatment.Cost = Prediction * 92408)
+
+OD.Pred.Points <- st_centroid(reg.ss.cv)
+DOA.Pred.Points <- st_centroid(DOA.reg.ss.cv)
+Treated.Pred.Points <- st_centroid(Treated.reg.ss.cv)
+
+DistrictODs <- st_join(MesaDistricts, OD.Pred.Points, join = st_contains)%>%
+  st_drop_geometry()%>%
+  group_by(district) %>%
+  summarise(Predicted.ODs = sum(Prediction))
+
+DistrictDOAs <- st_join(MesaDistricts, DOA.Pred.Points, join = st_contains)%>%
+  st_drop_geometry()%>%
+  group_by(district) %>%
+  summarise(Predicted.DOA = sum(Prediction))
+
+DistrictTreated <- st_join(MesaDistricts, Treated.Pred.Points, join = st_contains)%>%
+  st_drop_geometry()%>%
+  group_by(district) %>%
+  summarise(Predicted.Treated = sum(Prediction))
+
+District.Summary <- cbind(MesaDistricts, DistrictODs, DistrictDOAs, DistrictTreated)
+
+District.Summary$total.costs <- (District.Summary$Predicted.DOA * 11548000)+(District.Summary$Predicted.Treated * 221219)
+
+
+             ggplot() +
+      geom_sf(data = District.Summary, aes(fill=Predicted.ODs))+
+      labs(title="Predicted Annual Heroin Overdoses(Total)") +
+      mapTheme()
+
+ggplot() +
+      geom_sf(data = District.Summary, aes(fill=Predicted.DOA))+
+      labs(title="Predicted Annual Heroin Overdoses(Fatal)") +
+      mapTheme()
+
+ggplot() +
+      geom_sf(data = District.Summary, aes(fill=Predicted.Treated))+
+      labs(title="Predicted Annual Heroin Overdoses(Receiving Treatment)") +
+      mapTheme()
+
+ggplot() +
+      geom_sf(data = District.Summary, aes(fill=total.costs))+
+      labs(title="Combined Economic Costs of Heroin Use and Fatal Overdoses") +
+      mapTheme()
+
+ggplot() +
+      geom_sf(data = District.Summary, aes(fill=Predicted.Treated))+
+      labs(title="Predicted Annual Heroin Overdoses by City Council District, Fatal") +
+      mapTheme()
+
+```
+
